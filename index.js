@@ -41,7 +41,10 @@ const server = http.createServer(app);
 
 // Set up multer storage for file upload
 const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: Infinity } // Set the file size limit to Infinity
+});
 
 // Array to store uploaded files
 const uploadedFiles = [];
