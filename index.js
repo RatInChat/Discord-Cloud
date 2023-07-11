@@ -3,9 +3,9 @@ import discord from 'discord.js';
 import express from 'express';
 import http from 'http';
 import multer from 'multer';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
 import axios from 'axios';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import dotenv from 'dotenv';
 dotenv.config();
 // Set up database
@@ -35,18 +35,17 @@ bot.on('ready', async () => {
 
 bot.login(process.env.TOKEN);
 
-// Set up Express server
 const app = express();
 const server = http.createServer(app);
-
-// Set up multer storage for file upload
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+app.use(express.static(join(__dirname, 'public')));
 const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
   limits: { fileSize: Infinity } // Set the file size limit to Infinity
 });
 
-// Array to store uploaded files
 const uploadedFiles = [];
 const chunkSize = 25 * 1024 * 1024; // Define the chunk size here
 async function fetchUploadedFiles() {
@@ -65,7 +64,6 @@ async function fetchUploadedFiles() {
       }
 
       if (chunkIndex !== null) {
-        // Split file, find all chunks for the file
         const chunks = db.prepare('SELECT messageId FROM files WHERE name = ?').all(name);
 
         if (chunks.length === 0) {
@@ -187,6 +185,7 @@ app.get('/', async (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Discloud</title>
+        <link rel="stylesheet" href="styles.css">
         <script>
         function deleteFile(fileName) {
           fetch('/delete', {
@@ -208,16 +207,153 @@ app.get('/', async (req, res) => {
             });
         }        
         </script>
+        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     </head>
     <body>
-        <form action="/upload" method="post" enctype="multipart/form-data">
-            <input type="file" name="file">
-            <input type="submit" value="Upload" style="background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px;">
-        </form>
-        <h2>Uploaded Files</h2>
-        <ul>
-          ${filesHTML}
-        </ul>
+    <div class="sd-tabs" dark>
+            <input class="sd-tab-radio" tabindex="1" name="tabs" type="radio" id="tabone" checked="checked">
+            <label class="sd-tab-label" for="tabone">
+            <div class="sd-tab-icon">
+              <img src="./download.png" alt="icon">
+            </div>
+            <div class="sd-tab-desc">Uploads</div>
+            <div class="sd-tab-icon sd-tab-close">
+              <svg aria-hidden="true" data-prefix="fal" data-icon="times" xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 320 512" class="svg-inline--fa fa-times fa-w-10 fa-2x">
+                  <path fill="currentColor"
+                      d="M193.94 256L296.5 153.44l21.15-21.15c3.12-3.12 3.12-8.19 0-11.31l-22.63-22.63c-3.12-3.12-8.19-3.12-11.31 0L160 222.06 36.29 98.34c-3.12-3.12-8.19-3.12-11.31 0L2.34 120.97c-3.12 3.12-3.12 8.19 0 11.31L126.06 256 2.34 379.71c-3.12 3.12-3.12 8.19 0 11.31l22.63 22.63c3.12 3.12 8.19 3.12 11.31 0L160 289.94 262.56 392.5l21.15 21.15c3.12 3.12 8.19 3.12 11.31 0l22.63-22.63c3.12-3.12 3.12-8.19 0-11.31L193.94 256z" />
+              </svg>
+            </div>
+            </label>
+            <div class="sd-tab-content" tabindex="1">
+              <div class="file-new-section">
+              <div class="file-new-button" id="fileNewButton">
+                <img src="./new.png" alt="new">
+                <p>New</p>
+                <img src="./downarrow.png" class="down-arrow" alt="downarrow">
+              </div>
+              <div class="file-new-dropdown">
+                <div class="file-new-dropdown-item" onclick="uploadFileButton()">
+                  <img src="./upload.png" alt="upload">
+                  Upload Files
+                </div>
+                <div class="file-new-dropdown-item">
+                  <img src="./folder.png" alt="folder">
+                  Folder
+                </div>
+                <div id="upload-form">
+                  <form enctype="multipart/form-data">
+                    <input type="file" name="file" id="file-input">
+                    <input type="button" value="Upload" style="background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px;" onclick="uploadFile()">
+                  </form>
+                </div>
+                </div>
+                <div class="line-breaker" />
+                <h2>Uploaded Files</h2>
+                <ul>
+                  ${filesHTML}
+                </ul>
+                <section id="progress-section"></section>
+            </div>
+    </div>
+  <script>
+  const fileNewButton = document.getElementById('fileNewButton');
+  const fileNewDropdown = document.querySelector('.file-new-dropdown');
+  
+  fileNewButton.addEventListener('click', toggleDropdown);
+  
+  function toggleDropdown() {
+    fileNewDropdown.style.display = fileNewDropdown.style.display === 'block' ? 'none' : 'block';
+  }
+
+  document.addEventListener('click', function(event) {
+    const isClickInsideDropdown = fileNewDropdown.contains(event.target);
+    const isClickInsideButton = fileNewButton.contains(event.target);
+  
+    if (!isClickInsideDropdown && !isClickInsideButton) {
+      fileNewDropdown.style.display = 'none';
+    }
+  });
+
+  function uploadFileButton() {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.click();
+  
+    fileInput.addEventListener('change', (event) => {
+      const selectedFile = event.target.files[0];
+      if (selectedFile) {
+        uploadFile(selectedFile);
+      }
+    });
+  }
+  
+  const progressSection = document.getElementById('progress-section');
+
+  function createProgressBar(id, title) {
+    const progressDiv = document.createElement('div');
+    progressDiv.setAttribute('id', \`\${id}-div\`);
+    progressDiv.innerHTML = \`
+      <p>\${title}</p>
+      <div class="progress-bar progress-bar-show-percent">
+        <div id="\${id}-progress-bar" class="progress-bar-filled" style="width: 0" data-filled="Progress 0%"></div>
+      </div>
+      \`;
+    progressSection.appendChild(progressDiv);
+  }
+
+  function updateProgressBar(id, percent) {
+    const progressBar = document.getElementById(\`\${id}-progress-bar\`);
+    progressBar.style.width = \`\${percent}%\`;
+    progressBar.setAttribute('data-filled', \`Progress \${percent}%\`);
+  }
+
+  function deleteProgressBar(id, timeout = 3000) {
+    const progressDiv = document.getElementById(\`\${id}-div\`);
+    setTimeout(() => progressSection.removeChild(progressDiv), timeout);
+  }
+
+  function makeid(length) {
+    let result = '';
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const charactersLength = characters.length;
+    for (let i = 0; i < length; i += 1) {
+      result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+    return result;
+  }
+
+  function uploadFile(file) {
+    if (!file) {
+      return;
+    }
+  
+    const id = makeid(20);
+    const formData = new FormData();
+    formData.append('file', file);
+  
+    createProgressBar(id, \`Uploading \${file.name}\`);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/upload');
+  
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const progress = (e.loaded / e.total) * 100;
+        updateProgressBar(id, Math.floor(progress));
+      }
+    });
+  
+    xhr.onload = async () => {
+      deleteProgressBar(id);
+    };
+  
+    xhr.onerror = async () => {
+      deleteProgressBar(id);
+    };
+  
+    xhr.send(formData);
+  }  
+</script>
     </body>
     </html>
   `;
@@ -374,9 +510,6 @@ app.post('/delete', express.json(), async (req, res) => {
         }
       }
 
-      // Remove the following line since messages have already been deleted
-      // await fetchUploadedFiles();
-
       res.sendStatus(200);
     } catch (error) {
       console.error('Failed to delete file:', fileName, error);
@@ -389,7 +522,12 @@ app.post('/delete', express.json(), async (req, res) => {
 
 app.post('/upload', upload.single('file'), async (req, res) => {
   const file = req.file;
-  const fileName = file.originalname;
+  let fileName = file.originalname;
+  const fileExists = db.prepare('SELECT name FROM files WHERE name = ?').get(fileName);
+  if (fileExists) {
+    const fileNumber = db.prepare('SELECT COUNT(*) AS count FROM files WHERE name LIKE ?').get(`${fileName.split('.')[0]}%`).count;
+    fileName = `${fileName.split('.')[0]} (${fileNumber}).${fileName.split('.')[1]}`;
+  }
   const fileType = file.mimetype;
   const channelId = '1071697670156066837'; // Replace with your desired channel ID
 
@@ -404,6 +542,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     if (file.size <= chunkSize) {
       // Non-split file, store directly
       const message = await channel.send({
+        content: `Uploaded file: ${fileName}`,
         files: [
           {
             attachment: file.buffer,
@@ -428,6 +567,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
         const chunk = file.buffer.slice(start, end);
 
         const message = await channel.send({
+          content: `Uploading file: ${fileName} - Chunk ${i + 1} of ${chunkCount}`,
           files: [
             {
               attachment: chunk,
@@ -437,6 +577,9 @@ app.post('/upload', upload.single('file'), async (req, res) => {
         });
 
         chunks.push(message.id);
+
+        const percent = ((i + 1) / chunkCount) * 100;
+        res.write(`event: progress\ndata: ${percent.toFixed(2)}\n\n`);
       }
 
       chunks.forEach((messageId, chunkIndex) => {
@@ -446,9 +589,8 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       });
     }
 
-    await fetchUploadedFiles();
-
-    res.redirect('/');
+    res.write('event: complete\ndata: 100\n\n');
+    res.end();
   } catch (error) {
     console.error('Failed to upload file:', error);
     res.status(500).send('Failed to upload file');
