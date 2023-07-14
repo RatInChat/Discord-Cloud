@@ -150,19 +150,19 @@ function generateFilesHTML() {
         // Split file, generate download link for merged file
         const downloadLink = `/download-merged/${messageId}`;
         return `
-          <li>
-            <a href="${downloadLink}" download>${name}</a>
-            <span onclick="deleteFile('${name}')" style="cursor: pointer;">🗑️</span>
-          </li>
+          <div class="file" data-name="${name}" onclick="handleFileFocus(event)">
+            <!-- <a href="${downloadLink}" download>${name}</a> -->
+            ${name}
+          </div>
         `;
       } else {
         // Non-split file, generate download link for single file
         const downloadLink = `/download/${messageId}`;
         return `
-          <li>
-            <a href="${downloadLink}" download>${name}</a>
-            <span onclick="deleteFile('${name}')" style="cursor: pointer;">🗑️</span>
-          </li>
+          <div class="file" data-name="${name}" onclick="handleFileFocus(event)">
+            <!-- <a href="${downloadLink}" download>${name}</a> -->
+            ${name}
+          </div>
         `;
       }
     })
@@ -208,55 +208,93 @@ app.get('/', async (req, res) => {
         }        
         </script>
         <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+        <link
+        rel="stylesheet"
+        href="https://unpkg.com/simplebar@latest/dist/simplebar.css"
+      />
+      <script src="https://unpkg.com/simplebar@latest/dist/simplebar.min.js"></script>
     </head>
     <body>
     <div class="sd-tabs" dark>
-            <input class="sd-tab-radio" tabindex="1" name="tabs" type="radio" id="tabone" checked="checked">
-            <label class="sd-tab-label" for="tabone">
-            <div class="sd-tab-icon">
-              <img src="./download.png" alt="icon">
-            </div>
-            <div class="sd-tab-desc">Uploads</div>
-            <div class="sd-tab-icon sd-tab-close">
-              <svg aria-hidden="true" data-prefix="fal" data-icon="times" xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 320 512" class="svg-inline--fa fa-times fa-w-10 fa-2x">
-                  <path fill="currentColor"
-                      d="M193.94 256L296.5 153.44l21.15-21.15c3.12-3.12 3.12-8.19 0-11.31l-22.63-22.63c-3.12-3.12-8.19-3.12-11.31 0L160 222.06 36.29 98.34c-3.12-3.12-8.19-3.12-11.31 0L2.34 120.97c-3.12 3.12-3.12 8.19 0 11.31L126.06 256 2.34 379.71c-3.12 3.12-3.12 8.19 0 11.31l22.63 22.63c3.12 3.12 8.19 3.12 11.31 0L160 289.94 262.56 392.5l21.15 21.15c3.12 3.12 8.19 3.12 11.31 0l22.63-22.63c3.12-3.12 3.12-8.19 0-11.31L193.94 256z" />
-              </svg>
-            </div>
-            </label>
-            <div class="sd-tab-content" tabindex="1">
-              <div class="file-new-section">
-              <div class="file-new-button" id="fileNewButton">
-                <img src="./new.png" alt="new">
-                <p>New</p>
-                <img src="./downarrow.png" class="down-arrow" alt="downarrow">
-              </div>
-              <div class="file-new-dropdown">
-                <div class="file-new-dropdown-item" onclick="uploadFileButton()">
-                  <img src="./upload.png" alt="upload">
-                  Upload Files
-                </div>
-                <div class="file-new-dropdown-item">
-                  <img src="./folder.png" alt="folder">
-                  Folder
-                </div>
-                <div id="upload-form">
-                  <form enctype="multipart/form-data">
-                    <input type="file" name="file" id="file-input">
-                    <input type="button" value="Upload" style="background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px;" onclick="uploadFile()">
-                  </form>
-                </div>
-                </div>
-                <div class="line-breaker" />
-                <h2>Uploaded Files</h2>
-                <ul>
-                  ${filesHTML}
-                </ul>
-                <section id="progress-section"></section>
-            </div>
+    <input class="sd-tab-radio" tabindex="1" name="tabs" type="radio" id="tabone" checked="checked">
+    <label class="sd-tab-label" for="tabone">
+    <div class="sd-tab-icon">
+      <img src="./download.png" alt="icon">
     </div>
+    <div class="sd-tab-desc">Uploads</div>
+    <div class="sd-tab-icon sd-tab-close">
+      <svg aria-hidden="true" data-prefix="fal" data-icon="times" xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 320 512" class="svg-inline--fa fa-times fa-w-10 fa-2x">
+          <path fill="currentColor"
+              d="M193.94 256L296.5 153.44l21.15-21.15c3.12-3.12 3.12-8.19 0-11.31l-22.63-22.63c-3.12-3.12-8.19-3.12-11.31 0L160 222.06 36.29 98.34c-3.12-3.12-8.19-3.12-11.31 0L2.34 120.97c-3.12 3.12-3.12 8.19 0 11.31L126.06 256 2.34 379.71c-3.12 3.12-3.12 8.19 0 11.31l22.63 22.63c3.12 3.12 8.19 3.12 11.31 0L160 289.94 262.56 392.5l21.15 21.15c3.12 3.12 8.19 3.12 11.31 0l22.63-22.63c3.12-3.12 3.12-8.19 0-11.31L193.94 256z" />
+      </svg>
+    </div>
+    </label>
+    <div class="sd-tab-content" tabindex="1">
+      <div class="file-new-section">
+      <div class="file-new-button" id="fileNewButton">
+        <img src="./new.png" alt="new">
+        <p>New</p>
+        <img src="./downarrow.png" class="down-arrow" alt="downarrow">
+      </div>
+      <div class="file-new-dropdown">
+        <div class="file-new-dropdown-item" onclick="uploadFileButton()">
+          <img src="./upload.png" alt="upload">
+          Upload Files
+        </div>
+        <div class="file-new-dropdown-item">
+          <img src="./folder.png" alt="folder">
+          Folder
+        </div>
+        </div>
+        <div class="line-breaker-vertical"></div>
+        <div class="file-new-item cut">
+          <img src="scissors.png" alt="scissors">
+          <div class="tooltip">Cut</div>
+        </div>
+        <div class="file-new-item copy">
+          <img src="copy.png" alt="copy">
+          <div class="tooltip">Copy</div>
+        </div>
+        <div class="file-new-item paste">
+          <img src="paste.png" alt="paste">
+          <div class="tooltip">Paste</div>
+        </div>
+        <div class="file-new-item rename">
+          <img src="rename.png" alt="rename">
+          <div class="tooltip">Rename</div>
+        </div>
+        <div class="file-new-item share">
+          <img src="share.png" alt="share">
+          <div class="tooltip">Share</div>
+        </div>
+        <div class="file-new-item trash">
+          <img src="trash.png" alt="trash">
+          <div class="tooltip">Delete</div>
+        </div>
+      </div>
+        <div class="line-breaker"></div>
+        <div class="nav-bar">
+          <div class="nav-bar-item">
+          </div>
+        </div>
+        <div class="files-info">
+          <div class="side-bar" id="simple-bar">
+              <div class="side-bar-item selected">
+                  <img src="./home.png" alt="upload">
+                  <p>Home</p>
+              </div>
+              <div data-simplebar></div>
+          </div>
+          <div class="line-breaker-vertical-full"></div>
+          <div class="files-section">
+              ${filesHTML}
+          </div>
+        </div>
+        <section id="progress-section"></section>
+  </div>
   <script>
+  new SimpleBar(document.getElementById('simple-bar'), { autoHide: false });
   const fileNewButton = document.getElementById('fileNewButton');
   const fileNewDropdown = document.querySelector('.file-new-dropdown');
   
@@ -265,6 +303,51 @@ app.get('/', async (req, res) => {
   function toggleDropdown() {
     fileNewDropdown.style.display = fileNewDropdown.style.display === 'block' ? 'none' : 'block';
   }
+  let focusedFile = null;
+
+  function handleFileFocus(event) {
+    const fileElement = event.currentTarget;
+  
+    // Remove focus from previously focused file
+    if (focusedFile) {
+      focusedFile.classList.remove('file-focused');
+      const items = document.querySelectorAll('.file-new-item');
+      items.forEach((item) => {
+        item.style.opacity = '0.5';
+      });
+    }
+  
+    // Apply focus to the clicked file
+    fileElement.classList.add('file-focused');
+    focusedFile = fileElement;
+  
+    const items = document.querySelectorAll('.file-new-item');
+    items.forEach((item) => {
+      item.style.opacity = '1';
+    });
+  
+    // Prevent event propagation to avoid triggering other click events
+    event.stopPropagation();
+  }  
+  
+  document.addEventListener('click', handleDocumentClick);
+
+  function handleDocumentClick(event) {
+    const filesSection = document.querySelector('.files-section');
+    const isClickInsideFiles = filesSection.contains(event.target);
+  
+    if (!isClickInsideFiles && focusedFile) {
+      focusedFile.classList.remove('file-focused');
+      const items = document.querySelectorAll('.file-new-item');
+      items.forEach((item) => {
+        item.style.opacity = '0.5';
+      });
+      focusedFile = null;
+    }
+  }  
+  window.addEventListener('beforeunload', () => {
+    document.removeEventListener('click', handleDocumentClick);
+  });  
 
   document.addEventListener('click', function(event) {
     const isClickInsideDropdown = fileNewDropdown.contains(event.target);
@@ -274,6 +357,17 @@ app.get('/', async (req, res) => {
       fileNewDropdown.style.display = 'none';
     }
   });
+  const fileNewTrashIcon = document.querySelector('.trash');
+  fileNewTrashIcon.addEventListener('click', deleteFocusedFile);
+
+  function deleteFocusedFile() {
+    const focusedFile = document.querySelector('.file.file-focused');
+    if (focusedFile) {
+      const name = focusedFile.getAttribute('data-name');
+      deleteFile(name);
+    }
+  }
+  
 
   function uploadFileButton() {
     const fileInput = document.createElement('input');
@@ -354,6 +448,24 @@ app.get('/', async (req, res) => {
     xhr.send(formData);
   }  
 </script>
+<noscript>
+  <style>
+    /**
+    * Reinstate scrolling for non-JS clients
+    */
+    .simplebar-content-wrapper {
+      scrollbar-width: auto;
+      -ms-overflow-style: auto;
+    }
+
+    .simplebar-content-wrapper::-webkit-scrollbar,
+    .simplebar-hide-scrollbar::-webkit-scrollbar {
+      display: initial;
+      width: initial;
+      height: initial;
+    }
+  </style>
+</noscript>
     </body>
     </html>
   `;
