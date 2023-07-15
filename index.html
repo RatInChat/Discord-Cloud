@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Discloud</title>
+  <title>Disdrive</title>
   <link rel="stylesheet" href="styles.css">
   <script>
     function deleteFile(fileName) {
@@ -30,6 +30,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <link rel="stylesheet" href="https://unpkg.com/simplebar@latest/dist/simplebar.css" />
   <script src="https://unpkg.com/simplebar@latest/dist/simplebar.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
 </head>
 
 <body>
@@ -109,9 +110,9 @@
           <img src="./up.png" alt="up">
           <div class="tooltip">Up "idk what this does."</div>
         </div>
-        <div class="path-box">
+        <div class="path-box" onclick="textBox()">
           <img src="./download.png" alt="uploads">
-          <img src="./right.png" class="small bold" alt="right">
+          <img src="./right.png" class="small bold right-arrow" alt="right">
           <span class="path">uploads</span>
         </div>        
       </div>
@@ -187,7 +188,61 @@ if (!isClickInsideFiles && focusedFile) {
 }  
 window.addEventListener('beforeunload', () => {
 document.removeEventListener('click', handleDocumentClick);
-});  
+});
+const config = {
+    FORBID_TAGS: ['script'],
+  };
+
+  function textBox() {
+    const pathBox = document.querySelector('.path-box');
+    const path = pathBox.querySelector('.path');
+    if (!path) return;
+
+    const textBox = document.createElement('input');
+    textBox.id = 'pathInput';
+    textBox.type = 'text';
+    textBox.value = path.textContent || path.innerText;
+    pathBox.replaceChild(textBox, path);
+    textBox.focus();
+
+    textBox.addEventListener('keyup', handleEnterKey);
+    pathBox.removeEventListener('click', textBoxClick);
+    pathBox.classList.add('input-active');
+  }
+
+  function handleEnterKey(event) {
+    if (event.key === 'Enter') {
+      const sanitizedValue = DOMPurify.sanitize(event.target.value, config);
+      const path = document.createElement('span');
+      path.className = 'path';
+      path.innerHTML = sanitizedValue;
+      const textBox = document.querySelector('#pathInput');
+      const pathBox = document.querySelector('.path-box');
+      pathBox.replaceChild(path, textBox);
+      pathBox.addEventListener('click', textBoxClick);
+      pathBox.classList.remove('input-active');
+    }
+  }
+
+  function textBoxClick(event) {
+    const pathBox = document.querySelector('.path-box');
+    const textBox = document.querySelector('#pathInput');
+    const isClickInsidePathBox = pathBox.contains(event.target);
+    const isClickInsideTextBox = textBox.contains(event.target);
+
+    if (!isClickInsidePathBox && !isClickInsideTextBox) {
+      const sanitizedValue = DOMPurify.sanitize(textBox.value, config);
+      const path = document.createElement('span');
+      path.className = 'path';
+      path.innerHTML = sanitizedValue;
+      pathBox.replaceChild(path, textBox);
+      pathBox.addEventListener('click', textBoxClick);
+      pathBox.classList.remove('input-active');
+    }
+  }
+
+  const pathBox = document.querySelector('.path-box');
+  pathBox.addEventListener('click', textBoxClick);
 
 document.addEventListener('click', function(event) {
 const isClickInsideDropdown = fileNewDropdown.contains(event.target);
@@ -286,7 +341,7 @@ xhr.onerror = async () => {
 };
 
 xhr.send(formData);
-}  
+}
 </script>
 <noscript>
 <style>
