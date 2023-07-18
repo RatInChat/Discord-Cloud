@@ -6,6 +6,13 @@ fileNewButton.addEventListener('click', toggleDropdown);
 
 function toggleDropdown() {
 fileNewDropdown.style.display = fileNewDropdown.style.display === 'block' ? 'none' : 'block';
+const path = document.querySelector('.path-box');
+const paths = path.querySelectorAll('.path');
+
+if (paths.length > 2) {
+  const createFolder = document.querySelector('.folder');
+  createFolder.classList.add('disabled');
+}
 }
 let focusedFile = null;
 
@@ -122,10 +129,40 @@ function deleteFocusedFile() {
 const focusedFile = document.querySelector('.file.file-focused');
 if (focusedFile) {
   const name = focusedFile.getAttribute('data-name');
-  deleteFile(name);
+  const pathBox = document.querySelector('.path-box');
+  const paths = pathBox.querySelectorAll('.path');
+  let folderName = paths[paths.length - 1].textContent;
+  let parentFolderNameUnparsed = paths[paths.length - 2];
+  let parentFolderName = parentFolderNameUnparsed ? parentFolderNameUnparsed.textContent : null;
+
+  if (folderName === 'uploads') {
+    folderName = null;
+    parentFolderName = null;
+  }
+
+  deleteFile(name, folderName || null, parentFolderName || null);
 }
 }
 
+function deleteFile(fileName, folderName = null, parentFolderName = null) {
+  fetch('/delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ fileName, folderName, parentFolderName })
+    })
+    .then((response) => {
+      if (response.ok) {
+        window.location.reload();
+      } else {
+        console.error('Failed to delete file');
+      }
+    })
+    .catch((error) => {
+      console.error(error);
+    });
+}
 
 function uploadFileButton() {
 const fileInput = document.createElement('input');
@@ -137,9 +174,16 @@ fileInput.addEventListener('change', (event) => {
   for (let i = 0; i < selectedFile.length; i += 1) {
     let pathBox = document.querySelector('.path-box');
     const paths = pathBox.querySelectorAll('.path');
-    const folderName = paths[paths.length - 1].textContent;
+    let folderName = paths[paths.length - 1].textContent;
+    let parentFolderNameUnparsed = paths[paths.length - 2];
+    let parentFolderName = parentFolderNameUnparsed ? parentFolderNameUnparsed.textContent : null;
+    
+    if (folderName === 'uploads') {
+      folderName = null;
+      parentFolderName = null;
+    }
 
-    uploadFile(selectedFile[i], folderName || null);
+    uploadFile(selectedFile[i], folderName || null, parentFolderName || null);
   }
 });
 }
@@ -178,7 +222,7 @@ for (let i = 0; i < length; i += 1) {
 }
 return result;
 }
-async function uploadFile(file, folderName) {
+async function uploadFile(file, folderName, parentFolderName) {
   if (!file) {
     return;
   }
@@ -189,7 +233,11 @@ async function uploadFile(file, folderName) {
 
   if (folderName) {
     formData.append("folderName", folderName);
+  } 
+  if (parentFolderName) {
+    formData.append("parentFolderName", parentFolderName);
   }
+
   // createProgressBar(id, `Uploading ${file.name}`);
 
   try {
@@ -219,6 +267,9 @@ async function uploadFile(file, folderName) {
 }
 
 function createFolder() {
+  const folderButton = document.querySelector('.folder');
+  if (folderButton.classList.contains('disabled')) return;
+
   const filesSection = document.querySelector('.files-section');
   const folder = document.createElement('div');
   folder.className = 'file';
@@ -234,7 +285,6 @@ function createFolder() {
   folder.appendChild(input);
   filesSection.appendChild(folder);
   input.focus();
-  // add event listener for enter key or click outside
   input.addEventListener('keyup', handleFolderNameInput);
   document.addEventListener('click', handleFolderNameInput);
 }
@@ -253,10 +303,48 @@ function handleFolderNameInput(event) {
       file.replaceChild(fileName, input);
       input.removeEventListener('keyup', handleFolderNameInput);
       document.removeEventListener('click', handleFolderNameInput);
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/create-folder');
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.send(JSON.stringify({ folderName: input.value }));
+      // if is in folder
+      const pathBox = document.querySelector('.path-box');
+      const paths = pathBox.querySelectorAll('.path');
+      const parentFolderName = paths[paths.length - 1].textContent;
+      
+      if (parentFolderName) {
+        fetch('/create-folder', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ folderName: sanitizedValue, parentFolderName }),
+        })
+          .then((response) => {
+            if (response.ok) {
+              window.location.reload();
+            } else {
+              console.error('Failed to create folder');
+            }
+          })
+          .catch((error) => {
+            console.error('Error creating folder:', error);
+          });
+      } else {
+        fetch('/create-folder', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ folderName: sanitizedValue }),
+        })
+          .then((response) => {
+            if (response.ok) {
+              window.location.reload();
+            } else {
+              console.error('Failed to create folder');
+            }
+          })
+          .catch((error) => {
+            console.error('Error creating folder:', error);
+          });
+      }
     }
  
   }
@@ -333,7 +421,7 @@ function share() {
     });
   }
 }
-function handleFolderDoubleClick(event) {
+async function handleFolderDoubleClick(event) {
     const folderElement = event.currentTarget;
     const folderName = folderElement.getAttribute('data-name');
     
@@ -345,20 +433,67 @@ function handleFolderDoubleClick(event) {
       });
       focusedFile = null;
     }
+    const home = document.querySelector('.home');
+    
+    if (home) {
+      home.classList.remove('selected');
+    }
+    // check if its a folder folder
+    const path = document.querySelector('.path-box');
+    const paths = path.querySelectorAll('.path');
 
-    // Fetch the folder contents from the server
-    fetch(`/folders/${folderName}`)
-      .then((response) => response.text())
-      .then((folderContentsHTML) => {
-        const folderContentsContainer = document.querySelector('.files-section');
-        folderContentsContainer.innerHTML = folderContentsHTML;
-        const path = document.querySelector('.path-box');
-        path.innerHTML += `
-            <img src="./right.png" class="small bold right-arrow" alt="right">
-            <span class="path">${folderName}</span>
-        `;
-      })
-      .catch((error) => {
-        console.error('Error fetching folder contents:', error);
-      });
+    if (paths.length > 1) {
+      const parentFolderName = paths[paths.length - 1].textContent;
+      await fetch(`/folders/${folderName}/${parentFolderName}`)
+        .then(async (response) => await response.text())
+        .then(async (folderContentsHTML) => {
+          const folderContentsContainer = document.querySelector('.files-section');
+          folderContentsContainer.innerHTML = folderContentsHTML;
+          const path = document.querySelector('.path-box');
+          path.innerHTML += `
+              <img src="./right.png" class="small bold right-arrow" alt="right">
+              <span class="path">${folderName}</span>
+          `;
+        })
+        .catch((error) => {
+          console.error('Error fetching folder contents:', error);
+        });
+    } else {
+      await fetch(`/folders/${folderName}`)
+        .then(async (response) => await response.text())
+        .then(async (folderContentsHTML) => {
+          const folderContentsContainer = document.querySelector('.files-section');
+          folderContentsContainer.innerHTML = folderContentsHTML;
+          const path = document.querySelector('.path-box');
+          path.innerHTML += `
+              <img src="./right.png" class="small bold right-arrow" alt="right">
+              <span class="path">${folderName}</span>
+          `;
+        })
+        .catch((error) => {
+          console.error('Error fetching folder contents:', error);
+        });
+    }
+}
+
+function home() {
+  const path = document.querySelector('.path-box');
+  path.innerHTML = `
+    <img src="./download.png" alt="uploads">
+    <img src="./right.png" class="small bold right-arrow" alt="right">
+    <span class="path">uploads</span>
+  `;
+
+  let html = fetch('/reset');
+  html.then((response) => {
+    return response.text();
+  }
+  ).then((html) => {
+    const folderContentsContainer = document.querySelector('.files-section');
+    folderContentsContainer.innerHTML = html;
+  }
+  ).catch((error) => {
+    console.error('Error fetching folder contents:', error);
+  }
+  );
 }

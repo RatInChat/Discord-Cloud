@@ -5,6 +5,7 @@ import http from 'http';
 import multer from 'multer';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
+import open from 'open';
 import { dirname, join } from 'path';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
@@ -233,8 +234,8 @@ app.get('/', async (req, res) => {
   });
 });
 
-app.get('/download/:messageId/:folderId?', async (req, res) => {
-  const { messageId, folderId } = req.params;
+app.get('/download/:messageId/:folderId?/:parentFolderName?', async (req, res) => {
+  const { messageId, folderId, parentFolderName } = req.params;
 
   if (!messageId) {
     res.status(400).send('Message ID not specified');
@@ -242,7 +243,16 @@ app.get('/download/:messageId/:folderId?', async (req, res) => {
   }
 
   if (folderId) {
-    const folder = await fileSchema.findOne({ messageId: folderId });
+    let folder;
+    let parentFolder = await fileSchema.findOne({ name: parentFolderName });
+    if (parentFolderName) {
+      if (parentFolder) {
+        folder = parentFolder.attachments.find((file) => file.messageId === folderId);
+      }
+    } else {
+      folder = await fileSchema.findOne({ messageId: folderId });
+    }
+
     if (!folder) {
       res.status(404).send('Folder not found');
       return;
@@ -328,10 +338,74 @@ app.get('/download/:messageId/:folderId?', async (req, res) => {
   }
 });
 
-app.get('/download-merged/:messageId/:folderId?', async (req, res) => {
-  const { messageId, folderId } = req.params;
+app.get('/download-merged/:messageId/:folderId?/:parentFolderName?', async (req, res) => {
+  const { messageId, folderId, parentFolderName } = req.params;
+
   if (!messageId) {
     res.status(400).send('Message ID not specified');
+    return;
+  }
+
+  if (folderId) {
+    let folder;
+    let parentFolder = await fileSchema.findOne({ name: parentFolderName });
+    if (parentFolderName) {
+      if (parentFolder) {
+        folder = parentFolder.attachments.find((file) => file.messageId === folderId);
+      }
+    } else {
+      folder = await fileSchema.findOne({ messageId: folderId });
+    }
+    if (!folder) {
+      res.status(404).send('Folder not found');
+      return;
+    }
+
+    const buffers = [];
+    const files = folder.attachments.filter((file) => file.chunkIndex >= 0);
+
+    const parsedFiles = files.filter((file) => file.messageId === messageId);
+    const fileName = parsedFiles[0].name;
+
+    const chunks = files.filter((file) => file.name === fileName);
+
+    for (const chunk of chunks) {
+      const { channelId, messageId } = chunk;
+
+      try {
+        const channel = await bot.channels.fetch(channelId, { force: true });
+        if (!channel) {
+          res.status(500).send('Failed to fetch channel');
+          return;
+        }
+        const message = await channel.messages.fetch(messageId);
+        if (!message) {
+          res.status(404).send('File not found');
+          return;
+        }
+
+        const attachment = message.attachments.first();
+        if (!attachment) {
+          res.status(404).send('File not found');
+          return;
+        }
+
+        const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+        const fileBuffer = Buffer.from(response.data);
+        buffers.push(fileBuffer);
+      } catch (error) {
+        console.error('Failed to fetch attachment:', error);
+        res.status(500).send('Failed to fetch attachment');
+      }
+    }
+
+    const mergedBuffer = Buffer.concat(buffers);
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', mergedBuffer.length);
+    res.send(mergedBuffer);
+
     return;
   }
 
@@ -376,11 +450,150 @@ app.get('/download-merged/:messageId/:folderId?', async (req, res) => {
 });
 
 app.post('/delete', express.json(), async (req, res) => {
-  const { fileName } = req.body;
+  const { fileName, folderName, parentFolderName } = req.body;
 
   if (fileName) {
     try {
-      const filesToDelete = await fileSchema.find({ name: fileName });
+      let filesToDelete = await fileSchema.find({ name: fileName });
+      
+      if (folderName && !parentFolderName) {
+        let folder = await fileSchema.findOne({ name: folderName });
+
+        if (folder) {
+          let filesToDelete = folder.attachments.filter((file) => file.name === fileName);
+
+          for (const file of filesToDelete) {
+            const { messageId, channelId, chunkIndex, folderId } = file;
+
+            const channel = await bot.channels.fetch(channelId, { force: true });
+            if (!channel) {
+              console.error('Channel not found');
+              res.status(500).send('Channel not found');
+              return;
+            }
+
+            try {
+              if (folderId) {
+                // folder file, delete all associated files
+                const folderFiles = await folder.attachments.find({ folderId: folderId });
+
+                for (const folderFile of folderFiles) {
+                  const { messageId } = folderFile;
+                  const message = await channel.messages.fetch(messageId);
+                  if (message) {
+                    await message.delete();
+                  }
+                  
+                  await folder.attachments.remove(folderFile);
+                }
+              } else if (chunkIndex !== null) {
+                // Split file, delete all chunks
+                const chunks = folder.attachments.filter((chunk) => chunk.name === fileName);
+
+                for (const chunk of chunks) {
+                  const { messageId } = chunk;
+                  const message = await channel.messages.fetch(messageId);
+                  if (message) {
+                    await message.delete();
+                  }
+                  const indexToRemove = folder.attachments.findIndex((attachment) => attachment.messageId === messageId);
+
+                  if (indexToRemove !== -1) {
+                    // Use $pull to remove the chunk from the attachments array based on its index
+                    await folder.updateOne({ $pull: { attachments: folder.attachments[indexToRemove] } });
+                  }
+                }
+              } else {
+                // Non-split file, delete the message directly
+                const message = await channel.messages.fetch(messageId);
+                if (message) {
+                  await message.delete();
+                }
+                // Delete the message from the database
+                await folder.attachments.remove(file);
+              }
+              } catch (error) {
+                console.error('Failed to delete message:', messageId, error);
+              }
+          }
+        }
+      } else if (folderName && parentFolderName) {
+        let parentFolder = await fileSchema.findOne({ name: parentFolderName });
+
+        if (parentFolder) {
+          let folder = parentFolder.attachments.find((file) => file.name === folderName);
+
+          if (folder) {
+            let filesToDelete = folder.attachments.filter((file) => file.name === fileName);
+
+            for (const file of filesToDelete) {
+              const { messageId, channelId, chunkIndex, folderId } = file;
+
+              const channel = await bot.channels.fetch(channelId, { force: true });
+              if (!channel) {
+                console.error('Channel not found');
+                res.status(500).send('Channel not found');
+                return;
+              }
+
+              try {
+                if (folderId) {
+                  // folder file, delete all associated files
+                  const folderFiles = await folder.attachments.find({ folderId: folderId });
+
+                  for (const folderFile of folderFiles) {
+                    const { messageId } = folderFile;
+                    const message = await channel.messages.fetch(messageId);
+                    if (message) {
+                      await message.delete();
+                    }
+                    
+                    await folder.attachments.remove(folderFile);
+                  }
+                } else if (!chunkIndex) {
+                  // Split file, delete all chunks
+                  const chunks = folder.attachments.filter((chunk) => chunk.name === fileName);
+
+                  for (const chunk of chunks) {
+                    const { messageId } = chunk;
+                    const message = await channel.messages.fetch(messageId);
+                    if (message) {
+                      await message.delete();
+                    }
+                    const indexToRemove = folder.attachments.findIndex((attachment) => attachment.messageId === messageId);
+
+                    if (indexToRemove !== -1) {
+                      await folder.attachments.splice(indexToRemove, 1);
+                    }
+                  }
+                } else {
+                  // Non-split file, delete the message directly
+                  const message = await channel.messages.fetch(messageId);
+                  if (message) {
+                    await message.delete();
+                  }
+                  // Delete the message from the database
+                  await folder.attachments.remove(file);
+                }
+              } catch (error) {
+                console.error('Failed to delete message:', messageId, error);
+              }
+
+              if (folder.attachments.length === 0) {
+                const indexToRemove = parentFolder.attachments.findIndex((attachment) => attachment.messageId === folder.messageId);
+
+                if (indexToRemove !== -1) {
+                  // Use $pull to remove the folder from the attachments array based on its index
+                  await parentFolder.updateOne({ $pull: { attachments: parentFolder.attachments[indexToRemove] } });
+                }
+              }
+
+              parentFolder.markModified('attachments');
+              await parentFolder.save();
+            } 
+          }
+        }
+      }
 
       for (const file of filesToDelete) {
         const { _id, messageId, channelId, chunkIndex, folderId } = file;
@@ -447,13 +660,15 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   const file = req.file;
   let fileName = file.originalname;
   const fileExists = await fileSchema.findOne({ name: fileName });
-  if (fileExists) {
+  const folderName = req.body.folderName || null;
+  const parentFolderName = req.body.parentFolderName || null;
+
+  if (fileExists && !folderName) {
     const fileNumber = await fileSchema.countDocuments({ name: new RegExp(`^${fileName.split(".")[0]}`, "i") });
     fileName = `${fileName.split(".")[0]} (${fileNumber}).${fileName.split(".")[1]}`;
   }
 
   const fileType = file.mimetype;
-  const folderName = req.body.folderName || null;
   const channelId = process.env.CHANNEL_ID;
 
   try {
@@ -477,9 +692,24 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         });
   
         if (folderName) {
-          const folder = await fileSchema.findOne({ name: folderName });
+          let folder;
+          let parentFolder = await fileSchema.findOne({ name: parentFolderName });
+          if (parentFolderName && parentFolderName != "uploads") {
+            if (parentFolder) {
+              folder = parentFolder.attachments.find((file) => file.name === folderName);
+            }
+          } else {
+            folder = await fileSchema.findOne({ name: folderName });
+          }
+
           if (folder) {
-            // Folder exists, add the file to the folder
+            const folderExists = folder.attachments.find((file) => file.name === fileName);
+
+            if (folderExists) {
+              const fileNumber = await fileSchema.countDocuments({ name: new RegExp(`^${fileName.split(".")[0]}`, "i") });
+              fileName = `${fileName.split(".")[0]} (${fileNumber}).${fileName.split(".")[1]}`;
+            }
+
             folder.attachments.push({
               name: fileName,
               messageId: message.id,
@@ -491,7 +721,13 @@ app.post("/upload", upload.single("file"), async (req, res) => {
                 },
               ],
             });
-            await folder.save();
+            
+            if (parentFolderName && parentFolderName != "uploads") {
+              parentFolder.markModified('attachments');
+              await parentFolder.save();
+            } else {
+              await folder.save();
+            };
           } else {
             // Folder doesn't exist, just upload the file
             const newFile = new fileSchema({
@@ -548,7 +784,15 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         res.write(`event: progress\ndata: ${percent.toFixed(2)}\n\n`);
       }
       if (folderName) {
-        const folder = await fileSchema.findOne({ name: folderName });
+        let folder;
+        const parentFolder = await fileSchema.findOne({ name: parentFolderName });
+        if (parentFolderName) {
+          if (parentFolder) {
+            folder = parentFolder.attachments.find((file) => file.name === folderName);
+          }
+        } else {
+          folder = await fileSchema.findOne({ name: folderName });
+        }
         if (folder) {
           // Folder exists, add the file to the folder
           chunks.forEach((chunk, index) => {
@@ -565,7 +809,12 @@ app.post("/upload", upload.single("file"), async (req, res) => {
               ],
             });
           });
-          await folder.save();
+          if (parentFolderName) {
+            parentFolder.markModified('attachments');
+            await parentFolder.save();
+          } else {
+            await folder.save();
+          }
         } else {
           // Folder doesn't exist, just upload the file
           chunks.forEach((chunk, index) => {
@@ -615,7 +864,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 });
 
 app.post("/create-folder", express.json(), async (req, res) => {
-  const { folderName } = req.body;
+  const { folderName, parentFolderName } = req.body;
   const channelId = process.env.CHANNEL_ID;
 
   try {
@@ -630,14 +879,38 @@ app.post("/create-folder", express.json(), async (req, res) => {
       content: `Created folder: ${folderName}`,
     });
 
-    const newFolder = new fileSchema({
-      name: folderName,
-      messageId: message.id,
-      channelId: channelId,
-      isFolder: true,
-    });
+    if (parentFolderName) {
+      const folder = await fileSchema.findOne({ name: parentFolderName });
 
-    await newFolder.save();
+      if (folder) {
+        folder.attachments.push({
+          name: folderName,
+          messageId: message.id,
+          channelId: channelId,
+          isFolder: true,
+          attachments: [],
+        });
+        await folder.save();
+      } else {
+        const newFile = new fileSchema({
+          name: folderName,
+          messageId: message.id,
+          channelId: channelId,
+          isFolder: true,
+          attachments: [],
+        });
+        await newFile.save();
+      }
+    } else {
+      const newFile = new fileSchema({
+        name: folderName,
+        messageId: message.id,
+        channelId: channelId,
+        isFolder: true,
+        attachments: [],  
+      });
+      await newFile.save();
+    }
 
     res.sendStatus(200);
   } catch (error) {
@@ -646,22 +919,66 @@ app.post("/create-folder", express.json(), async (req, res) => {
   }
 });
 
-app.get('/folders/:folderName', handleFolderDoubleClick);
+app.get('/folders/:folderName/:parentFolderName?', handleFolderDoubleClick);
 
 async function handleFolderDoubleClick(req, res) {
   const folderName = req.params.folderName;
-  const folderContents = await fileSchema.find({ name: folderName });
+  const parentFolderName = req.params.parentFolderName;
+
+  let folderContents;
+
+  if (parentFolderName) {
+    const folder = await fileSchema.findOne({ name: parentFolderName })
+
+    if (folder) {
+      folderContents = folder.attachments.filter((file) => file.name === folderName);
+    }
+  } else {
+    folderContents = await fileSchema.find({ name: folderName });
+  }
 
   if (folderContents) {
     const folderId = folderContents[0].messageId;
-    const folderContentsHTML = folderContents[0].attachments ? generateFolderContentsHTML(folderContents[0].attachments, folderId) : '';
+    let parsedContents = [];
+
+    for (const file of folderContents[0].attachments) {
+      let attachments = [];
+
+      if (file.chunkIndex >= 0) {
+        const chunks = folderContents[0].attachments.filter((chunk) => chunk.name === file.name);
+
+        for (const chunk of chunks) {
+          const chunkMessage = await bot.channels.fetch(file.channelId).then((channel) => channel.messages.fetch(chunk.messageId));
+          if (chunkMessage && chunkMessage.attachments && chunkMessage.attachments.size > 0) {
+            attachments.push(chunkMessage.attachments.first());
+          }
+        }
+      } else if (!file.isFolder) {
+        const message = await bot.channels.fetch(file.channelId).then(async (channel) => await channel.messages.fetch(file.messageId));
+        if (message && message.attachments && message.attachments.size > 0) {
+          attachments.push(message.attachments.first());
+        }
+      } else if (file.isFolder == true) {
+        attachments = [];
+      }
+
+      parsedContents.push({
+        name: file.name,
+        messageId: file.messageId,
+        channelId: file.channelId,
+        attachments,
+        chunkIndex: file.chunkIndex,
+      });
+    }
+
+    const folderContentsHTML = folderContents[0].attachments ? generateFolderContentsHTML(parsedContents, folderId, parentFolderName) : '';
     res.send(folderContentsHTML);
   } else {
     res.status(404).send('Folder not found');
   }
 }
 
-function generateFolderContentsHTML(folderContents, folderId) {
+function generateFolderContentsHTML(folderContents, folderId, parentFolderName) {
   return folderContents.map((file) => {
     const { name, messageId, attachments, chunkIndex } = file;
 
@@ -671,7 +988,7 @@ function generateFolderContentsHTML(folderContents, folderId) {
 
     if (attachments.length > 1) {
       // Split file, generate download link for merged file
-      const downloadLink = `/download-merged/${messageId}/${folderId}`;
+      const downloadLink = `/download-merged/${messageId}/${folderId}${parentFolderName ? `/${parentFolderName}` : ''}`;
       return `
         <div class="file" data-name="${name}" data-link="${downloadLink}" onclick="handleFileFocus(event)">
           <i class="fas ${getIconForFileType(name)}"></i> <!-- Dynamic icon -->
@@ -680,7 +997,7 @@ function generateFolderContentsHTML(folderContents, folderId) {
       `;
     } else if (attachments.length === 1) {
       // Non-split file, generate download link for single file
-      const downloadLink = `/download/${messageId}/${folderId}`;
+      const downloadLink = `/download/${messageId}/${folderId}${parentFolderName ? `/${parentFolderName}` : ''}`;
       return `
         <div class="file" data-name="${name}" data-link="${downloadLink}" onclick="handleFileFocus(event)">
           <i class="fas ${getIconForFileType(name)}"></i> <!-- Dynamic icon -->
@@ -690,7 +1007,7 @@ function generateFolderContentsHTML(folderContents, folderId) {
     } else if (attachments.length === 0) {
       // Folder
       return `
-        <div class="file" data-name="${name}" onclick="handleFileFocus(event)">
+        <div class="file" data-name="${name}" onclick="handleFileFocus(event)" ondblclick="handleFolderDoubleClick(event)">
           <img src="./folder.png" alt="folder" />
           <p class="file-name">${name}</p>
         </div>
@@ -701,7 +1018,16 @@ function generateFolderContentsHTML(folderContents, folderId) {
     return '';
   }).join('');
 }
-// Listen on port 3000
+
+app.get('/reset', async (req, res) => {
+  await fetchUploadedFiles();
+  const filesHTML = generateFilesHTML();
+  res.send(filesHTML);
+});
+
 server.listen(3000, () => {
   console.log('listening on *:3000');
+  if (process.env.OPEN_AUTO === 'true') {
+    open('http://localhost:3000');
+  }
 });

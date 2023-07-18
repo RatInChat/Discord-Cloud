@@ -6,27 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Disdrive</title>
   <link rel="stylesheet" href="styles.css">
-  <script>
-    function deleteFile(fileName) {
-      fetch('/delete', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ fileName })
-        })
-        .then((response) => {
-          if (response.ok) {
-            window.location.reload();
-          } else {
-            console.error('Failed to delete file');
-          }
-        })
-        .catch((error) => {
-          console.error(error);
-        });
-    }
-  </script>
   <link rel="stylesheet" href="https://unpkg.com/simplebar@latest/dist/simplebar.css" />
   <script src="https://unpkg.com/simplebar@latest/dist/simplebar.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
@@ -118,7 +97,7 @@
       </div>
       <div class="files-info">
         <div class="side-bar" id="simple-bar">
-          <div class="side-bar-item selected">
+          <div class="side-bar-item selected home" onclick="home()">
             <img src="./home.png" alt="upload">
             <p>Home</p>
           </div>
