@@ -27,10 +27,10 @@
         });
     }
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <link rel="stylesheet" href="https://unpkg.com/simplebar@latest/dist/simplebar.css" />
   <script src="https://unpkg.com/simplebar@latest/dist/simplebar.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
+  <script src="https://kit.fontawesome.com/cc19d1ac8f.js" crossorigin="anonymous"></script>
 </head>
 
 <body>
@@ -61,9 +61,9 @@
             <img src="./upload.png" alt="upload">
             Upload Files
           </div>
-          <div class="file-new-dropdown-item">
+          <div class="file-new-dropdown-item folder" onclick="createFolder()">
             <img src="./folder.png" alt="folder">
-            Folder
+            Create Folder
           </div>
         </div>
         <div class="line-breaker-vertical"></div>
@@ -83,7 +83,7 @@
           <img src="rename.png" alt="rename">
           <div class="tooltip">Rename</div>
         </div>
-        <div class="file-new-item share">
+        <div class="file-new-item share" onclick="share()">
           <img src="share.png" alt="share">
           <div class="tooltip">Share</div>
         </div>
@@ -132,217 +132,9 @@
     </div>
   </div>
   <section id="progress-section"></section>
+  <script src="./script.js"></script>
 </body>
 </html>
-<script>
-new SimpleBar(document.getElementById('simple-bar'), { autoHide: false });
-const fileNewButton = document.getElementById('fileNewButton');
-const fileNewDropdown = document.querySelector('.file-new-dropdown');
-
-fileNewButton.addEventListener('click', toggleDropdown);
-
-function toggleDropdown() {
-fileNewDropdown.style.display = fileNewDropdown.style.display === 'block' ? 'none' : 'block';
-}
-let focusedFile = null;
-
-function handleFileFocus(event) {
-const fileElement = event.currentTarget;
-
-// Remove focus from previously focused file
-if (focusedFile) {
-  focusedFile.classList.remove('file-focused');
-  const items = document.querySelectorAll('.file-new-item');
-  items.forEach((item) => {
-    item.style.opacity = '0.5';
-  });
-}
-
-// Apply focus to the clicked file
-fileElement.classList.add('file-focused');
-focusedFile = fileElement;
-
-const items = document.querySelectorAll('.file-new-item');
-items.forEach((item) => {
-  item.style.opacity = '1';
-});
-
-// Prevent event propagation to avoid triggering other click events
-event.stopPropagation();
-}  
-
-document.addEventListener('click', handleDocumentClick);
-
-function handleDocumentClick(event) {
-const filesSection = document.querySelector('.files-section');
-const isClickInsideFiles = filesSection.contains(event.target);
-
-if (!isClickInsideFiles && focusedFile) {
-  focusedFile.classList.remove('file-focused');
-  const items = document.querySelectorAll('.file-new-item');
-  items.forEach((item) => {
-    item.style.opacity = '0.5';
-  });
-  focusedFile = null;
-}
-}  
-window.addEventListener('beforeunload', () => {
-document.removeEventListener('click', handleDocumentClick);
-});
-const config = {
-    FORBID_TAGS: ['script'],
-  };
-
-  function textBox() {
-    const pathBox = document.querySelector('.path-box');
-    const path = pathBox.querySelector('.path');
-    if (!path) return;
-
-    const textBox = document.createElement('input');
-    textBox.id = 'pathInput';
-    textBox.type = 'text';
-    textBox.value = path.textContent || path.innerText;
-    pathBox.replaceChild(textBox, path);
-    textBox.focus();
-
-    textBox.addEventListener('keyup', handleEnterKey);
-    pathBox.removeEventListener('click', textBoxClick);
-    pathBox.classList.add('input-active');
-  }
-
-  function handleEnterKey(event) {
-    if (event.key === 'Enter') {
-      const sanitizedValue = DOMPurify.sanitize(event.target.value, config);
-      const path = document.createElement('span');
-      path.className = 'path';
-      path.innerHTML = sanitizedValue;
-      const textBox = document.querySelector('#pathInput');
-      const pathBox = document.querySelector('.path-box');
-      pathBox.replaceChild(path, textBox);
-      pathBox.addEventListener('click', textBoxClick);
-      pathBox.classList.remove('input-active');
-    }
-  }
-
-  function textBoxClick(event) {
-    const pathBox = document.querySelector('.path-box');
-    const textBox = document.querySelector('#pathInput');
-    const isClickInsidePathBox = pathBox.contains(event.target);
-    const isClickInsideTextBox = textBox.contains(event.target);
-
-    if (!isClickInsidePathBox && !isClickInsideTextBox) {
-      const sanitizedValue = DOMPurify.sanitize(textBox.value, config);
-      const path = document.createElement('span');
-      path.className = 'path';
-      path.innerHTML = sanitizedValue;
-      pathBox.replaceChild(path, textBox);
-      pathBox.addEventListener('click', textBoxClick);
-      pathBox.classList.remove('input-active');
-    }
-  }
-
-  const pathBox = document.querySelector('.path-box');
-  pathBox.addEventListener('click', textBoxClick);
-
-document.addEventListener('click', function(event) {
-const isClickInsideDropdown = fileNewDropdown.contains(event.target);
-const isClickInsideButton = fileNewButton.contains(event.target);
-
-if (!isClickInsideDropdown && !isClickInsideButton) {
-  fileNewDropdown.style.display = 'none';
-}
-});
-const fileNewTrashIcon = document.querySelector('.trash');
-fileNewTrashIcon.addEventListener('click', deleteFocusedFile);
-
-function deleteFocusedFile() {
-const focusedFile = document.querySelector('.file.file-focused');
-if (focusedFile) {
-  const name = focusedFile.getAttribute('data-name');
-  deleteFile(name);
-}
-}
-
-
-function uploadFileButton() {
-const fileInput = document.createElement('input');
-fileInput.type = 'file';
-fileInput.click();
-
-fileInput.addEventListener('change', (event) => {
-  const selectedFile = event.target.files[0];
-  if (selectedFile) {
-    uploadFile(selectedFile);
-  }
-});
-}
-
-const progressSection = document.getElementById('progress-section');
-
-function createProgressBar(id, title) {
-const progressDiv = document.createElement('div');
-progressDiv.setAttribute('id', `${id}-div`);
-progressDiv.innerHTML = `
-  <p>${title}</p>
-  <div class="progress-bar progress-bar-show-percent">
-    <div id="${id}-progress-bar" class="progress-bar-filled" style="width: 0" data-filled="Progress 0%"></div>
-  </div>
-  `;
-progressSection.appendChild(progressDiv);
-}
-
-function updateProgressBar(id, percent) {
-const progressBar = document.getElementById(`${id}-progress-bar`);
-progressBar.style.width = `${percent}%`;
-progressBar.setAttribute('data-filled', `Progress ${percent}%`);
-}
-
-function deleteProgressBar(id, timeout = 3000) {
-const progressDiv = document.getElementById(`${id}-div`);
-setTimeout(() => progressSection.removeChild(progressDiv), timeout);
-}
-
-function makeid(length) {
-let result = '';
-const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-const charactersLength = characters.length;
-for (let i = 0; i < length; i += 1) {
-  result += characters.charAt(Math.floor(Math.random() * charactersLength));
-}
-return result;
-}
-
-function uploadFile(file) {
-if (!file) {
-  return;
-}
-
-const id = makeid(20);
-const formData = new FormData();
-formData.append('file', file);
-
-createProgressBar(id, `Uploading ${file.name}`);
-const xhr = new XMLHttpRequest();
-xhr.open('POST', '/upload');
-
-xhr.upload.addEventListener('progress', (e) => {
-  if (e.lengthComputable) {
-    const progress = (e.loaded / e.total) * 100;
-    updateProgressBar(id, Math.floor(progress));
-  }
-});
-
-xhr.onload = async () => {
-  deleteProgressBar(id);
-};
-
-xhr.onerror = async () => {
-  deleteProgressBar(id);
-};
-
-xhr.send(formData);
-}
-</script>
 <noscript>
 <style>
 /**
