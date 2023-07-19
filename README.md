@@ -12,3 +12,5 @@
 - Self-host through example.env
 - Other stuff.
 
+### One Click Deploy with Railway
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/f18qPm?referralCode=rraS-5)
