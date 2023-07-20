@@ -19,22 +19,31 @@ let focusedFile = null;
 function handleFileFocus(event) {
 const fileElement = event.currentTarget;
 
-// Remove focus from previously focused file
 if (focusedFile) {
   focusedFile.classList.remove('file-focused');
   const items = document.querySelectorAll('.file-new-item');
   items.forEach((item) => {
-    item.style.opacity = '0.5';
+    item.classList.add('disabled');
   });
 }
 
-// Apply focus to the clicked file
 fileElement.classList.add('file-focused');
 focusedFile = fileElement;
 
+if (!focusedFile.getAttribute('data-link')) {
+    const items = document.querySelectorAll('.file-new-item');
+    items.forEach((item) => {
+      if (item.classList.contains('share')) return;
+      item.classList.remove('disabled');
+      item.style.opacity = 1;
+    }
+    );
+    return;
+}
 const items = document.querySelectorAll('.file-new-item');
 items.forEach((item) => {
-  item.style.opacity = '1';
+  item.classList.remove('disabled');
+  item.style.opacity = 1;
 });
 
 // Prevent event propagation to avoid triggering other click events
@@ -51,7 +60,7 @@ if (!isClickInsideFiles && focusedFile) {
   focusedFile.classList.remove('file-focused');
   const items = document.querySelectorAll('.file-new-item');
   items.forEach((item) => {
-    item.style.opacity = '0.5';
+    item.classList.add('disabled');
   });
   focusedFile = null;
 }
@@ -62,37 +71,64 @@ document.removeEventListener('click', handleDocumentClick);
 const config = {
     FORBID_TAGS: ['script'],
   };
+function textBox() {
+  const pathBox = document.querySelector('.path-box');
+  const pathSpans = pathBox.querySelectorAll('.path');
+  
+  if (!pathSpans || pathSpans.length === 0) return;
 
-  function textBox() {
-    const pathBox = document.querySelector('.path-box');
-    const path = pathBox.querySelector('.path');
-    if (!path) return;
+  let filePath = Array.from(pathSpans)
+    .map(span => decodeURI(span.textContent)) // Decode each path segment
+    .join('\\'); // Concatenate with backslashes
+  
+  filePath = `C:\\\\${filePath}`;
 
-    const textBox = document.createElement('input');
-    textBox.id = 'pathInput';
-    textBox.type = 'text';
-    textBox.value = path.textContent || path.innerText;
-    pathBox.replaceChild(textBox, path);
-    textBox.focus();
+  const textBox = document.createElement('input');
+  textBox.id = 'pathInput';
+  textBox.type = 'text';
+  textBox.value = filePath;
 
-    textBox.addEventListener('keyup', handleEnterKey);
-    pathBox.removeEventListener('click', textBoxClick);
-    pathBox.classList.add('input-active');
-  }
+  pathBox.replaceChildren(textBox);
+  textBox.focus();
 
-  function handleEnterKey(event) {
-    if (event.key === 'Enter') {
-      const sanitizedValue = DOMPurify.sanitize(event.target.value, config);
-      const path = document.createElement('span');
-      path.className = 'path';
-      path.innerHTML = sanitizedValue;
-      const textBox = document.querySelector('#pathInput');
-      const pathBox = document.querySelector('.path-box');
-      pathBox.replaceChild(path, textBox);
-      pathBox.addEventListener('click', textBoxClick);
-      pathBox.classList.remove('input-active');
+  textBox.addEventListener('keyup', handleEnterKey);
+  pathBox.removeEventListener('click', textBoxClick);
+  pathBox.classList.add('input-active');
+}
+function handleEnterKey(event) {
+  if (event.key === 'Enter') {
+    const textBoxValue = event.target;
+    let sanitizedValue = DOMPurify.sanitize(textBoxValue.value, config);
+
+    if (sanitizedValue.startsWith('C:\\\\')) {
+      sanitizedValue = sanitizedValue.replace('C:\\\\', `
+        <img src="./download.png" alt="uploads">
+        <img src="./right.png" class="small bold right-arrow" alt="right">
+        <span class="path">`);
+    } else {
+      sanitizedValue = `
+        <img src="./download.png" alt="uploads">
+        <img src="./right.png" class="small bold right-arrow" alt="right">
+        <span class="path">` + sanitizedValue;
     }
+
+    // Replace all remaining backslashes with the path structure.
+    sanitizedValue = sanitizedValue.replace(/\\/g, `
+        </span>
+        <img src="./right.png" class="small bold right-arrow" alt="right">
+        <span class="path">`);
+
+    // Create a new div element for the entire path-box structure.
+    const pathBox = document.createElement('div');
+    pathBox.className = 'path-box';
+    pathBox.innerHTML = sanitizedValue + '</span></div>';
+
+    const oldPathBox = document.querySelector('.path-box');
+    oldPathBox.replaceWith(pathBox);
+    pathBox.addEventListener('click', textBox);
+    pathBox.classList.remove('input-active');
   }
+}
 
   function textBoxClick(event) {
     const pathBox = document.querySelector('.path-box');
@@ -350,6 +386,8 @@ function handleFolderNameInput(event) {
   }
 }
 function share() {
+  const shareButton = document.querySelector('.share');
+  if (shareButton.classList.contains('disabled')) return;
   const focusedFile = document.querySelector('.file.file-focused');
   if (focusedFile) {
     const fileName = focusedFile.getAttribute('data-name');
@@ -429,7 +467,7 @@ async function handleFolderDoubleClick(event) {
       focusedFile.classList.remove('file-focused');
       const items = document.querySelectorAll('.file-new-item');
       items.forEach((item) => {
-        item.style.opacity = '0.5';
+        item.classList.add('disabled');
       });
       focusedFile = null;
     }
