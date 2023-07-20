@@ -179,9 +179,13 @@ function getIconForFileType(fileName) {
     case 'jpg':
     case 'jpeg':
     case 'png':
+    case 'gif':
+    case 'svg':
       return 'fa-file-image';
     case 'mp4':
     case 'avi':
+    case 'mov':
+    case 'mkv':
       return 'fa-file-video';
     case 'pdf':
       return 'fa-file-pdf';
